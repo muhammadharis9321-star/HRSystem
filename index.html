@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muster: leave and approvals</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#EEF1F4;--panel:#fff;--ink:#16202A;--mute:#5B6773;--line:#D9DFE5;--accent:#2D4A8A;--on:#fff;--ok:#2E7D5B;--wait:#B7791F;--bad:#B23A48;color-scheme:light dark}
+@media(prefers-color-scheme:dark){:root{--bg:#10161C;--panel:#18212A;--ink:#E7ECF1;--mute:#97A3AE;--line:#2A3641;--accent:#8FAAE6;--on:#10161C;--ok:#58B58D;--wait:#E0A94A;--bad:#E27B88}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 'Public Sans',system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+header nav{display:flex;gap:4px;flex:1}header nav button{border:0;background:none;padding:8px 12px;border-radius:6px;color:var(--mute)}header nav .on{background:var(--bg);color:var(--ink);font-weight:600}
+main{max-width:860px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:16px;margin:0 0 12px}
+label{display:grid;gap:4px;font-size:13px;color:var(--mute);margin-bottom:10px}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0}
+button{font:inherit;padding:8px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--on)}button.link{border:0;background:none;color:var(--accent);padding:0 4px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.auth{max-width:420px;margin:8vh auto;padding:0 16px}
+.auth:not(.wide){background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:24px}
+.auth.wide{max-width:760px;display:grid;grid-template-columns:1fr 1fr;gap:16px}.auth.wide h1,.auth.wide>button{grid-column:1/-1}
+.btns{display:flex;gap:8px}@media(max-width:640px){.auth.wide{grid-template-columns:1fr}}
+.mute{color:var(--mute)}
+.bal{margin-bottom:14px}.bt{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;margin-bottom:6px}.bt span{color:var(--mute);font-size:13px}
+.bar{display:flex;height:12px;border-radius:999px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.bar .u{background:var(--accent)}.bar .p{background:repeating-linear-gradient(45deg,var(--accent) 0 3px,transparent 3px 6px);opacity:.55}
+.req{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+.act{display:flex;flex-wrap:wrap;gap:8px;align-items:end}.act label{margin:0}
+.pill{font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid currentColor}
+.pending{color:var(--wait)}.approved{color:var(--ok)}.rejected{color:var(--bad)}.cancelled{color:var(--mute)}
+.code{display:inline-block;font:600 20px ui-monospace,monospace;padding:8px 14px;border:1px dashed var(--accent);border-radius:6px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:9}.toast.bad{background:var(--bad);color:#fff}
+@media(prefers-reduced-motion:no-preference){.bar i{transition:width .4s}}
+</style></head><body><div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// 1) Paste your Supabase values here (Project Settings > API). The anon key is safe in the browser: row-level security protects the data.
+const CFG={url:'https://zlrylkvkqedhuvfbwgzh.supabase.co',key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpscnlsa3ZrcWVkaHV2ZmJ3Z3poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NjMyODUsImV4cCI6MjEwODMzOTI4NX0.3axLsgX4XQyAb2mN1gozl-R8h0v0gRQ1odsF7UmbEB4'};
+
+const sb=window.supabase.createClient(CFG.url,CFG.key);
+const app=document.getElementById('app'),$=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=d=>new Date(d+'T00:00').toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});
+const plural=n=>`${n} day${n==1?'':'s'}`;
+let me,org,tab='mine';
+function toast(m,bad){const t=document.createElement('div');t.className='toast'+(bad?' bad':'');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3500)}
+async function run(p,ok){const {data,error}=await p;if(error){toast(error.message,true);return null}if(ok)toast(ok);return data??true}
+
+async function boot(){
+ if(CFG.url.includes('YOUR-PROJECT'))return app.innerHTML='<div class="auth"><h1>Muster</h1><p>Add your Supabase URL and anon key at the top of this file, then reload.</p></div>';
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session)return authView();
+ const {data:p}=await sb.from('profiles').select('*').eq('id',session.user.id).maybeSingle();
+ if(!p)return onboard();
+ me=p;({data:org}=await sb.from('organizations').select('*').eq('id',p.org_id).single());
+ shell();
+}
+function authView(){app.innerHTML=`<div class="auth"><h1>Muster</h1><p class="mute">Leave and approvals for your team.</p>
+ <label>Email<input id="em" type="email" autocomplete="email"></label>
+ <label>Password (6+ characters)<input id="pw" type="password" autocomplete="current-password"></label>
+ <div class="btns"><button class="pri" onclick="signIn()">Sign in</button><button onclick="signUp()">Create account</button></div></div>`}
+async function signIn(){if(await run(sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value})))boot()}
+async function signUp(){const {data,error}=await sb.auth.signUp({email:$('em').value,password:$('pw').value});if(error)return toast(error.message,true);if(data.session)boot();else toast('Check your email to confirm, then sign in.')}
+const out=async()=>{await sb.auth.signOut();boot()};
+function onboard(){app.innerHTML=`<div class="auth wide"><h1>Set up your workspace</h1>
+ <section class="panel"><h2>Start a company</h2><label>Company name<input id="co"></label><label>Your name<input id="n1"></label><button class="pri" onclick="mk()">Create company</button></section>
+ <section class="panel"><h2>Join a company</h2><label>Join code<input id="jc"></label><label>Your name<input id="n2"></label><button class="pri" onclick="jn()">Join company</button></section>
+ <button class="link" onclick="out()">Sign out</button></div>`}
+async function mk(){if(await run(sb.rpc('create_organization',{p_org:$('co').value,p_name:$('n1').value})))boot()}
+async function jn(){if(await run(sb.rpc('join_organization',{p_code:$('jc').value,p_name:$('n2').value})))boot()}
+
+function shell(){
+ const tabs=[['mine','My leave']];if(me.role!=='employee')tabs.push(['appr','Approvals']);if(me.role==='admin')tabs.push(['ppl','People']);
+ app.innerHTML=`<header><b>${esc(org.name)}</b><nav>${tabs.map(([k,l])=>`<button class="${k===tab?'on':''}" onclick="go('${k}')">${l}</button>`).join('')}</nav><span>${esc(me.full_name)} <button class="link" onclick="out()">Sign out</button></span></header><main id="view"></main>`;
+ ({mine,appr,ppl}[tab]||mine)();
+}
+const go=k=>{tab=k;shell()};
+
+async function mine(){
+ const [b,t,r]=await Promise.all([
+  sb.from('leave_balances').select('*').eq('employee_id',me.id).order('name'),
+  sb.from('leave_types').select('*').order('name'),
+  sb.from('leave_requests').select('*,leave_types(name)').eq('employee_id',me.id).order('created_at',{ascending:false}).limit(30)]);
+ const bars=(b.data||[]).map(x=>{const e=+x.days_per_year,u=+x.used,p=+x.pending;
+  const w1=e?Math.min(100,u/e*100):0,w2=e?Math.max(0,Math.min(100-w1,p/e*100)):0;
+  return `<div class="bal"><div class="bt"><b>${esc(x.name)}</b><span>${u} used, ${p} pending${e?`, ${Math.max(0,e-u-p)} left of ${e}`:', no limit'}</span></div><div class="bar"><i class="u" style="width:${w1}%"></i><i class="p" style="width:${w2}%"></i></div></div>`}).join('');
+ const rows=(r.data||[]).map(x=>`<div class="req"><div><b>${esc(x.leave_types.name)}</b>, ${plural(x.days)}<br><span class="mute">${fmt(x.start_date)} to ${fmt(x.end_date)}${x.decision_note?`. Note: ${esc(x.decision_note)}`:''}</span></div><div class="act"><span class="pill ${x.status}">${x.status}</span>${x.status==='pending'?`<button onclick="cancelReq('${x.id}')">Cancel request</button>`:''}</div></div>`).join('')||'<p class="mute">No requests yet. Pick dates above to send your first one.</p>';
+ $('view').innerHTML=`<section class="panel"><h2>Your balances this year</h2>${bars||'<p class="mute">No leave types yet.</p>'}</section>
+ <section class="panel"><h2>Request leave</h2><div class="grid"><label>Type<select id="lt">${(t.data||[]).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label><label>From<input id="sd" type="date"></label><label>To<input id="ed" type="date"></label></div>
+ <label>Reason (optional)<input id="rs"></label><button class="pri" onclick="ask()">Send request</button> <span class="mute">Weekends are not counted.</span></section>
+ <section class="panel"><h2>Your requests</h2>${rows}</section>`;
+}
+async function ask(){if(!$('sd').value||!$('ed').value)return toast('Pick both dates.',true);
+ if(await run(sb.rpc('request_leave',{p_type:$('lt').value,p_start:$('sd').value,p_end:$('ed').value,p_reason:$('rs').value}),'Request sent'))mine()}
+async function cancelReq(id){if(await run(sb.rpc('cancel_leave',{p_id:id}),'Request cancelled'))mine()}
+
+async function appr(){
+ const {data,error}=await sb.from('leave_requests').select('*,leave_types(name),employee:profiles!employee_id(full_name)').eq('status','pending').neq('employee_id',me.id).order('start_date');
+ if(error)toast(error.message,true);
+ $('view').innerHTML=`<section class="panel"><h2>Waiting for your decision</h2>${(data||[]).map(x=>`<div class="req"><div><b>${esc(x.employee.full_name)}</b> asks for ${plural(x.days)} of ${esc(x.leave_types.name)}<br><span class="mute">${fmt(x.start_date)} to ${fmt(x.end_date)}${x.reason?`: ${esc(x.reason)}`:''}</span></div><div class="act"><input id="n${x.id}" placeholder="Note (optional)"><button class="pri" onclick="dec('${x.id}',true)">Approve</button><button onclick="dec('${x.id}',false)">Reject</button></div></div>`).join('')||'<p class="mute">Nothing waiting. New requests from your team show up here.</p>'}</section>`;
+}
+async function dec(id,ok){if(await run(sb.rpc('decide_leave',{p_id:id,p_approve:ok,p_note:$('n'+id).value}),ok?'Approved':'Rejected'))appr()}
+
+async function ppl(){
+ const {data}=await sb.from('profiles').select('*').order('full_name');const all=data||[],mgrs=all.filter(p=>p.role!=='employee');
+ $('view').innerHTML=`<section class="panel"><h2>Invite people</h2><p>Share this join code. They create an account, choose "Join a company", and enter it.</p><code class="code">${esc(org.join_code)}</code></section>
+ <section class="panel"><h2>People</h2>${all.map(p=>`<div class="req"><b>${esc(p.full_name)}${p.id===me.id?' (you)':''}</b><div class="act">
+ <label>Role<select ${p.id===me.id?'disabled':''} onchange="upd('${p.id}',{role:this.value})">${['employee','manager','admin'].map(r=>`<option ${r===p.role?'selected':''}>${r}</option>`).join('')}</select></label>
+ <label>Approver<select onchange="upd('${p.id}',{manager_id:this.value||null})"><option value="">None (admins decide)</option>${mgrs.filter(m=>m.id!==p.id).map(m=>`<option value="${m.id}" ${m.id===p.manager_id?'selected':''}>${esc(m.full_name)}</option>`).join('')}</select></label></div></div>`).join('')}</section>`;
+}
+async function upd(id,v){if(await run(sb.from('profiles').update(v).eq('id',id),'Saved'))ppl()}
+boot();
+</script></body></html>
